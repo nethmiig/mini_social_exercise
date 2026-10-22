@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from cryptography.fernet import Fernet
 import collections
@@ -7,8 +7,14 @@ import sqlite3
 import hashlib
 import re
 from datetime import datetime
+from assignment1_features import (
+    register_assignment1_features, get_weekly_goal_data, get_user_communities
+)
 
 app = Flask(__name__)
+# Flask does not autoescape .j2 filenames by default. Treat all template values
+# as text, including names and comments displayed by the new features.
+app.jinja_env.autoescape = True
 app.secret_key = '123456789' 
 DATABASE = 'database.sqlite'
 
@@ -39,6 +45,8 @@ def get_db():
             detect_types=sqlite3.PARSE_DECLTYPES
         )
         g.db.row_factory = sqlite3.Row
+        # Keep new memberships and goal records consistent when records are deleted.
+        g.db.execute('PRAGMA foreign_keys = ON')
 
     return g.db
 
@@ -95,11 +103,49 @@ REACTION_EMOJIS = {
 REACTION_TYPES = list(REACTION_EMOJIS.keys())
 
 
+def get_reply_opportunities(user_id, following_only=False, limit=3, offset=0):
+    """Find posts needing their first comment (Chapter 2, Design Claim 1).
+
+    Return both a page of posts and the total number of matching posts.
+    This uses existing tables; no database migration is needed.
+    """
+    # NOT EXISTS checks the whole comments table, not only the displayed page.
+    conditions = [
+        'NOT EXISTS (SELECT 1 FROM comments c WHERE c.post_id = p.id)'
+    ]
+    params = []
+    if user_id is not None:
+        # The invitation asks users to help someone else start a conversation.
+        conditions.append('p.user_id != ?')
+        params.append(user_id)
+        if following_only:
+            conditions.append(
+                'p.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)'
+            )
+            params.append(user_id)
+
+    where_clause = ' AND '.join(conditions)
+    # Only fixed SQL fragments are combined. User values use ? placeholders.
+    matching_count = query_db(f'''
+        SELECT COUNT(*) AS total
+        FROM posts p JOIN users u ON u.id = p.user_id
+        WHERE {where_clause}
+    ''', params, one=True)
+    posts = query_db(f'''
+        SELECT p.id, p.content, p.created_at, u.username, u.id AS user_id
+        FROM posts p JOIN users u ON u.id = p.user_id
+        WHERE {where_clause}
+        ORDER BY p.created_at DESC, p.id DESC
+        LIMIT ? OFFSET ?
+    ''', params + [limit, offset])
+    return posts, matching_count['total']
+
+
 @app.route('/')
 def feed():
     #  1. Get Pagination and Filter Parameters 
     try:
-        page = int(request.args.get('page', 1))
+        page = max(1, int(request.args.get('page', 1)))
     except ValueError:
         page = 1
     sort = request.args.get('sort', 'new').lower()
@@ -112,6 +158,20 @@ def feed():
     current_user_id = session.get('user_id')
     params = []
 
+    # The homepage previews three opportunities. The new tab paginates all of
+    # them using the same query, including the current All / Following filter.
+    reply_posts, needs_reply_count = get_reply_opportunities(
+        current_user_id,
+        following_only=(show == 'following'),
+        limit=POSTS_PER_PAGE if sort == 'needs_reply' else 3,
+        offset=offset if sort == 'needs_reply' else 0
+    )
+    needs_reply_preview = []
+    for post in reply_posts[:3]:
+        preview = dict(post)
+        preview['content'], _ = moderate_content(preview['content'])
+        needs_reply_preview.append(preview)
+
     #  2. Build the Query 
     where_clause = ""
     if show == 'following' and current_user_id:
@@ -121,7 +181,9 @@ def feed():
     # Add the pagination parameters to the query arguments
     pagination_params = (POSTS_PER_PAGE, offset)
 
-    if sort == 'popular':
+    if sort == 'needs_reply':
+        posts = reply_posts
+    elif sort == 'popular':
         query = f"""
             SELECT p.id, p.content, p.created_at, u.username, u.id as user_id,
                    IFNULL(r.total_reactions, 0) as total_reactions
@@ -194,6 +256,10 @@ def feed():
     #  4. Render Template with Pagination Info 
     return render_template('feed.html.j2', 
                            posts=posts_data, 
+                           needs_reply_posts=needs_reply_preview,
+                           needs_reply_count=needs_reply_count,
+                           weekly_goal=get_weekly_goal_data(get_db(), current_user_id) if current_user_id else None,
+                           my_communities=get_user_communities(get_db(), current_user_id) if current_user_id else [],
                            current_sort=sort,
                            current_show=show,
                            page=page, # Pass current page number
@@ -937,6 +1003,8 @@ def recommend(user_id, filter_following):
     recommended_posts = {} 
 
     return recommended_posts;
+
+register_assignment1_features(app, get_db, moderate_content)
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)

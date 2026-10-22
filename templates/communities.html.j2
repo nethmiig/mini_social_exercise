@@ -1,0 +1,47 @@
+{% extends "base.html.j2" %}
+{% block content %}
+{% autoescape true %}
+<div class="col-md-8 mx-auto">
+  <h1 class="h2">Communities</h1>
+  <p>Find a shared purpose, join a community and contribute to its discussions. These communities and their posts are public.</p>
+  {% for community in communities %}
+  <article class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h2 class="h4"><a href="{{ url_for('assignment1.community_detail', community_id=community.id) }}">{{ community.name }}</a>
+        {% if community.is_member %}<span class="badge bg-success">Member</span>{% endif %}
+      </h2>
+      <p>{{ community.description }}</p>
+      <p class="text-muted">{{ community.member_count }} members · {{ community.post_count }} posts</p>
+      <a class="btn btn-light btn-sm" href="{{ url_for('assignment1.community_detail', community_id=community.id) }}">View community</a>
+      {% if session.get('user_id') and not community.is_member %}
+      <form method="POST" action="{{ url_for('assignment1.join_community', community_id=community.id) }}" class="d-inline">
+        <button class="btn btn-primary btn-sm" type="submit">Join community</button>
+      </form>
+      {% elif community.is_member %}
+      <form method="POST" action="{{ url_for('assignment1.leave_community', community_id=community.id) }}" class="d-inline">
+        <button class="btn btn-light btn-sm" type="submit">Leave community</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+
+  {% if session.get('user_id') %}
+  <section class="card shadow-sm mt-4">
+    <div class="card-body">
+      <h2 class="h4">Create a community</h2>
+      <form action="{{ url_for('assignment1.communities') }}" method="POST">
+        <label class="form-label" for="community-name">Community name</label>
+        <input class="form-control mb-3" id="community-name" name="name" minlength="3" maxlength="80" required>
+        <label class="form-label" for="community-purpose">What brings your community together?</label>
+        <textarea class="form-control mb-3" id="community-purpose" name="description" rows="3" minlength="10" maxlength="500" required></textarea>
+        <button type="submit" class="btn btn-primary">Create and join community</button>
+      </form>
+    </div>
+  </section>
+  {% else %}
+  <p><a href="{{ url_for('login') }}">Log in</a> to join or create a community.</p>
+  {% endif %}
+</div>
+{% endautoescape %}
+{% endblock %}

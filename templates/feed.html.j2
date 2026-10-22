@@ -22,6 +22,95 @@
 </div>
 {% endif %}
 
+<!-- Chapter 2, Claim 15: frequent feedback makes a contribution goal useful. -->
+{% if weekly_goal %}
+<section class="col-md-8 mx-auto mb-4" id="weekly-goal" aria-labelledby="weekly-goal-heading">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h2 class="h4" id="weekly-goal-heading">Your weekly goal</h2>
+      <p class="text-muted">{{ weekly_goal.label }} · Helsinki time</p>
+      <p>Comment on <strong>{{ weekly_goal.target }} different posts</strong> by other people this week. Share a useful thought or answer a question.</p>
+      <p id="weekly-goal-count"><strong>{{ weekly_goal.completed }} / {{ weekly_goal.target }}</strong> conversations joined</p>
+      <div class="progress mb-3" style="height: 20px;">
+        <div class="progress-bar {% if weekly_goal.remaining == 0 %}bg-success{% endif %}"
+             role="progressbar" style="width: {{ weekly_goal.percent }}%;"
+             aria-label="Weekly goal progress" aria-valuenow="{{ weekly_goal.percent }}" aria-valuemin="0" aria-valuemax="100">
+          {{ weekly_goal.percent }}%
+        </div>
+      </div>
+      {% if weekly_goal.remaining == 0 %}
+      <p class="text-success">Goal reached! Thank you for taking part in the conversations.</p>
+      {% else %}
+      <p>{{ weekly_goal.remaining }} more to reach your goal. Repeated comments on the same post count once.</p>
+      <a class="btn btn-sm btn-primary mb-3" href="{{ url_for('feed', sort='needs_reply', show='all') }}">Find a conversation to join</a>
+      {% endif %}
+      <details>
+        <summary>{% if weekly_goal.is_saved %}Change your goal{% else %}Choose your own target{% endif %}</summary>
+        <form action="{{ url_for('assignment1.save_weekly_goal') }}" method="POST" class="mt-2">
+          <label for="weekly-target" class="form-label">Different posts to comment on this week (1–50)</label>
+          <input id="weekly-target" name="target" type="number" class="form-control mb-2" min="1" max="50" value="{{ weekly_goal.target }}" required>
+          <button type="submit" class="btn btn-sm btn-primary">Save this week's goal</button>
+        </form>
+      </details>
+      <p class="text-muted small mt-3 mb-0">Progress updates when this page loads. A new week starts on Monday at 00:00 in Helsinki, with a suggested target of three.</p>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if session.get('user_id') %}
+<section class="col-md-8 mx-auto mb-4" aria-labelledby="your-communities-heading">
+  <h2 class="h5" id="your-communities-heading">Your communities</h2>
+  {% for community in my_communities %}
+    <a class="btn btn-light btn-sm me-2 mb-2" href="{{ url_for('assignment1.community_detail', community_id=community.id) }}">{{ community.name|e }} <span class="badge bg-success">Member</span></a>
+  {% else %}
+    <p>Join a community around a shared purpose and take part in its discussions.</p>
+  {% endfor %}
+  <a href="{{ url_for('assignment1.communities') }}">Explore communities</a>
+</section>
+{% endif %}
+
+<!-- Chapter 2, Claim 1: make needed contributions visible and easy to act on. -->
+{% if session.get('user_id') and current_sort != 'needs_reply' %}
+<section class="col-md-8 mx-auto mb-4" aria-labelledby="needs-reply-heading">
+  <div class="card shadow-sm border-primary">
+    <div class="card-body">
+      <h2 class="h4" id="needs-reply-heading">Needs a reply</h2>
+      <p>Help someone start a conversation. These posts have no comments yet.</p>
+      {% if current_show == 'following' %}
+      <p class="text-muted small">Showing posts from people you follow.</p>
+      {% endif %}
+      {% for opportunity in needs_reply_posts %}
+      <article class="border-top pt-3 mt-3" id="reply-opportunity-{{ opportunity.id }}">
+        <a href="{{ url_for('user_profile', username=opportunity.username) }}">
+          @{{ opportunity.username|e }}
+        </a>
+        <small class="text-muted ms-2">{{ opportunity.created_at|datetimeformat }}</small>
+        <p class="mt-2">{{ opportunity.content|truncate(240, true)|e }}</p>
+        <a href="{{ url_for('post_detail', post_id=opportunity.id) }}" class="btn btn-sm btn-light">Read full post</a>
+        <!-- A native details element opens the reply form without custom JS. -->
+        <details class="mt-2">
+          <summary class="text-primary">Write the first reply</summary>
+          <form action="{{ url_for('add_comment', post_id=opportunity.id) }}" method="POST" class="mt-2">
+            <label for="first-reply-{{ opportunity.id }}" class="form-label">Your comment</label>
+            <textarea id="first-reply-{{ opportunity.id }}" name="content" class="form-control mb-2" rows="2" required></textarea>
+            <button type="submit" class="btn btn-primary btn-sm">Send reply</button>
+          </form>
+        </details>
+      </article>
+      {% else %}
+      <p class="mb-0">No posts need their first reply in this view. Try the All filter or check back later.</p>
+      {% endfor %}
+      {% if needs_reply_count %}
+      <a href="{{ url_for('feed', sort='needs_reply', show=current_show) }}" class="btn btn-light mt-3">
+        View all {{ needs_reply_count }} posts needing a reply
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <h2 class="text-center border-bottom pb-2 mb-4"><span>Posts</span></h2>
 
 <div class="mb-4 text-center">
@@ -32,6 +121,7 @@
     <a href="{{ url_for('feed', sort='new', show=current_show) }}" class="btn {% if current_sort == 'new' %}btn-primary{% else %}btn-light{% endif %}">New</a>
     <a href="{{ url_for('feed', sort='popular', show=current_show) }}" class="btn {% if current_sort == 'popular' %}btn-primary{% else %}btn-light{% endif %}">Popular</a>
     <a href="{{ url_for('feed', sort='recommended', show=current_show) }}" class="btn {% if current_sort == 'recommended' %}btn-primary{% else %}btn-light{% endif %}">Recommended</a>
+    <a href="{{ url_for('feed', sort='needs_reply', show=current_show) }}" class="btn {% if current_sort == 'needs_reply' %}btn-primary{% else %}btn-light{% endif %}">Needs a reply ({{ needs_reply_count }})</a>
   </div>
 
   <!-- This is the 'show' filter for All / Following -->
@@ -46,6 +136,10 @@
 
   
 </div>
+
+{% if current_sort == 'needs_reply' %}
+<p class="col-md-8 mx-auto text-muted">These posts have no comments yet. Add a comment to start a conversation. Once a comment is added, the post leaves this list on the next page load.</p>
+{% endif %}
 
 <div class="col-md-8 mx-auto">
   {% for entry in posts %}
@@ -76,7 +170,7 @@
         {% endif %}
       </div>
       
-      <p class="mt-2">{{ entry.post.content }}</p>
+      <p class="mt-2">{{ entry.post.content|e }}</p>
 
       <!-- Reactions Display and Add Reaction Button -->
       <div class="d-flex align-items-center mt-2 mb-2">
@@ -139,7 +233,7 @@
           <div class="d-flex justify-content-between">
             <div>
               <strong><a href="/u/{{ comment.username }}">{{ user_display(comment.username) }}</a></strong>
-              <p class="mb-0">{{ comment.content }}</p>
+              <p class="mb-0">{{ comment.content|e }}</p>
             </div>
             
             {% if session.get('user_id') == comment.user_id or session.get('user_id') == entry.post.user_id %}
@@ -185,7 +279,11 @@
   </div>
 
   {% else %}
+  {% if current_sort == 'needs_reply' %}
+  <p class="text-center">No posts need their first reply on this page. Try the All filter or return to page 1.</p>
+  {% else %}
   <p class="text-center">No posts to display.</p>
+  {% endif %}
   {% endfor %}
 </div>
 
@@ -196,7 +294,7 @@
     </a>
     <span class="mx-3 text-muted">Page {{ page }}</span>
     <a href="{{ url_for('feed', page=page+1, sort=current_sort, show=current_show) }}"
-      class="btn btn-primary {% if posts|length < per_page %}disabled{% endif %}">
+      class="btn btn-primary {% if (current_sort == 'needs_reply' and page * per_page >= needs_reply_count) or (current_sort != 'needs_reply' and posts|length < per_page) %}disabled{% endif %}">
       Next &raquo;
     </a>
   </div>
