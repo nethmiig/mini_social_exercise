@@ -23,6 +23,7 @@ from assignment1_features import (
     get_user_communities,
 )
 from assignment2_features import register_assignment2_features
+from assignment3_features import register_assignment3_features
 
 app = Flask(__name__)
 # Flask does not autoescape .j2 filenames by default. Treat all template values
@@ -1242,6 +1243,145 @@ def recommend(user_id, filter_following):
     - https://www.researchgate.net/publication/227268858_Recommender_Systems_Handbook
     """
 
+    # Common words are ignored when comparing topics.
+    stop_words = {
+        "the",
+        "and",
+        "for",
+        "with",
+        "this",
+        "that",
+        "have",
+        "from",
+        "your",
+        "you",
+        "are",
+        "was",
+        "but",
+        "not",
+        "just",
+        "about",
+        "they",
+        "what",
+        "when",
+        "how",
+        "can",
+        "our",
+        "all",
+        "will",
+        "has",
+        "its",
+    }
+
+    # Turn a post into a set of meaningful keywords.
+    def get_keywords(text):
+        words = re.findall(r"[a-zA-Z]{3,}", text.lower())
+        return set(words) - stop_words
+
+    # Check whether the user is logged in.
+    if not user_id:
+        return []
+
+    # Find users this person follows.
+    following_rows = (
+        query_db("SELECT followed_id FROM follows WHERE follower_id = ?", (user_id,))
+        or []
+    )
+
+    followed_ids = {row["followed_id"] for row in following_rows}
+
+    # Find posts the user reacted to positively.
+    liked_posts = (
+        query_db(
+            """
+        SELECT p.content
+        FROM reactions r
+        JOIN posts p ON r.post_id = p.id
+        WHERE r.user_id = ?
+          AND r.reaction_type IN ('like', 'love', 'laugh', 'wow')
+        ORDER BY p.created_at DESC
+        LIMIT 100
+        """,
+            (user_id,),
+        )
+        or []
+    )
+
+    # Collect keywords from positively reacted-to posts.
+    interest_words = set()
+
+    for post in liked_posts:
+        interest_words.update(get_keywords(post["content"] or ""))
+
+    # Fetch recent candidate posts.
+    # Own posts and previously reacted-to posts are excluded.
+    candidates = (
+        query_db(
+            """
+        SELECT
+            p.id,
+            p.content,
+            p.created_at,
+            p.user_id,
+            u.username
+        FROM posts p
+        JOIN users u ON u.id = p.user_id
+        WHERE p.user_id != ?
+          AND NOT EXISTS (
+              SELECT 1
+              FROM reactions r
+              WHERE r.post_id = p.id
+                AND r.user_id = ?
+          )
+        ORDER BY p.created_at DESC, p.id DESC
+        LIMIT 500
+        """,
+            (user_id, user_id),
+        )
+        or []
+    )
+
+    scored_posts = []
+
+    for post in candidates:
+
+        author_id = post["user_id"]
+
+        # Respect the Following filter.
+        if filter_following and author_id not in followed_ids:
+            continue
+
+        score = 0
+
+        # Posts from followed users get a higher score.
+        if author_id in followed_ids:
+            score += 3
+
+        # Compare post topics with the user's interests.
+        post_words = get_keywords(post["content"] or "")
+        matching_words = post_words & interest_words
+
+        # Each matching keyword adds relevance.
+        score += 2 * len(matching_words)
+
+        scored_posts.append((score, post))
+
+    # Choose the five most relevant posts.
+    # Recency breaks ties between equally relevant posts.
+    scored_posts.sort(
+        key=lambda item: (item[0], str(item[1]["created_at"]), item[1]["id"]),
+        reverse=True,
+    )
+
+    selected_posts = [post for score, post in scored_posts[:5]]
+
+    # Display the selected posts newest first.
+    selected_posts.sort(
+        key=lambda post: (str(post["created_at"]), post["id"]), reverse=True
+    )
+
+    return selected_posts
+
     recommended_posts = {}
 
     return recommended_posts
@@ -1249,6 +1389,7 @@ def recommend(user_id, filter_following):
 
 register_assignment1_features(app, get_db, moderate_content)
 register_assignment2_features(app, get_db)
+register_assignment3_features(app, get_db, moderate_content)
 
 if __name__ == "__main__":
     app.run(debug=True, port=8080)
