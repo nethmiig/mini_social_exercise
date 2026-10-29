@@ -22,6 +22,7 @@ from assignment1_features import (
     get_weekly_goal_data,
     get_user_communities,
 )
+from assignment2_features import register_assignment2_features
 
 app = Flask(__name__)
 # Flask does not autoescape .j2 filenames by default. Treat all template values
@@ -319,10 +320,13 @@ def add_post():
     content = request.form.get("content")
 
     # Pass the user's content through the moderation function
-    moderated_content = content
+    moderated_content, severity_score = moderate_content(content)
 
-    # Basic validation to ensure post is not empty
-    if moderated_content and moderated_content.strip():
+    # Reject content with severe violations.
+    if severity_score >= 5.0:
+        flash("Your post was rejected due to a moderation violation.", "danger")
+
+    elif moderated_content and moderated_content.strip():
         db = get_db()
         db.execute(
             "INSERT INTO posts (user_id, content) VALUES (?, ?)",
@@ -330,9 +334,9 @@ def add_post():
         )
         db.commit()
         flash("Your post was successfully created!", "success")
+
     else:
-        # This will catch empty posts or posts that were fully censored
-        flash("Post cannot be empty or was fully censored.", "warning")
+        flash("Post cannot be empty.", "warning")
 
     # Redirect back to the main feed to see the new post
     return redirect(url_for("feed"))
@@ -1244,6 +1248,7 @@ def recommend(user_id, filter_following):
 
 
 register_assignment1_features(app, get_db, moderate_content)
+register_assignment2_features(app, get_db)
 
 if __name__ == "__main__":
     app.run(debug=True, port=8080)

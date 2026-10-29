@@ -63,7 +63,41 @@
         {% endif %}
       </div>
 
-      <hr>
+      
+<!-- Coding Assignment 2: Report Post -->
+{% if session.get('user_id') %}
+<div class="mt-3 mb-3">
+    <details>
+        <summary class="btn btn-sm btn-outline-danger">
+            🚩 Report this post
+        </summary>
+
+        <form method="POST"
+              action="{{ url_for('report_post', post_id=post.id) }}"
+              class="border rounded p-3 mt-2">
+
+            <label for="report-reason" class="form-label">
+                Why are you reporting this post?
+            </label>
+
+            <select name="reason" id="report-reason"
+                    class="form-select mb-3" required>
+                <option value="">Choose a reason</option>
+                <option value="Spam or scam">Spam or scam</option>
+                <option value="Harassment">Harassment</option>
+                <option value="Inappropriate content">Inappropriate content</option>
+                <option value="Misinformation">Misinformation</option>
+                <option value="Other">Other</option>
+            </select>
+
+            <button type="submit" class="btn btn-danger btn-sm">
+                Submit report
+            </button>
+        </form>
+    </details>
+</div>
+{% endif %}
+<hr>
 
       <!-- Comments Section -->
       <div class="d-flex justify-content-between align-items-center mb-2">
