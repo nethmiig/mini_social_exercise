@@ -214,3 +214,277 @@ def register_assignment3_features(app, get_db, moderate_content):
 
         flash("Your welcome message was sent!", "success")
         return redirect(url_for("newcomers"))
+
+    # --------------------------------------------
+    # DESIGN CLAIM 22: NEWCOMER ONBOARDING
+    # --------------------------------------------
+
+    # Save whether each user has acknowledged the rules.
+    with app.app_context():
+        db = get_db()
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS newcomer_onboarding (
+                user_id INTEGER PRIMARY KEY,
+                rules_acknowledged INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        db.commit()
+
+    @app.route("/onboarding")
+    def newcomer_onboarding():
+
+        user_id = session.get("user_id")
+
+        if not user_id:
+            flash("Please log in first.", "warning")
+            return redirect(url_for("login"))
+
+        db = get_db()
+
+        # Step 1: Has the user acknowledged the rules?
+        rules = db.execute(
+            """
+            SELECT rules_acknowledged
+            FROM newcomer_onboarding
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+
+        rules_done = bool(rules and rules["rules_acknowledged"])
+
+        # Step 2: Has the user introduced themselves?
+        introduction = db.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM newcomer_introductions
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+
+        introduction_done = introduction["total"] > 0
+
+        # Step 3: Does the user follow another member?
+        following = db.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM follows
+            WHERE follower_id = ?
+              AND followed_id != ?
+            """,
+            (user_id, user_id),
+        ).fetchone()
+
+        following_done = following["total"] > 0
+
+        # Step 4: Has the user commented on another user's post?
+        discussion = db.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM comments c
+            JOIN posts p ON c.post_id = p.id
+            WHERE c.user_id = ?
+              AND p.user_id != ?
+            """,
+            (user_id, user_id),
+        ).fetchone()
+
+        discussion_done = discussion["total"] > 0
+
+        # Calculate progress from completed activities.
+        steps = [
+            rules_done,
+            introduction_done,
+            following_done,
+            discussion_done,
+        ]
+
+        completed = sum(steps)
+        progress = int((completed / len(steps)) * 100)
+
+        return render_template_string(
+            """
+        <!doctype html>
+        <html>
+        <head>
+            <title>My MiniSocial Journey</title>
+            <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+        </head>
+
+        <body class="container py-4">
+
+            <a href="/" class="btn btn-secondary mb-3">
+                Back to Home
+            </a>
+
+            <h2>My MiniSocial Journey</h2>
+
+            <p>
+                Complete these activities to get familiar
+                with the community.
+            </p>
+
+            <div class="card p-4 mb-4">
+
+                <h5>Your Progress: {{ completed }}/4</h5>
+
+                <div class="progress mb-3" style="height: 25px;">
+                    <div class="progress-bar bg-success"
+                         role="progressbar"
+                         style="width: {{ progress }}%;"
+                         aria-valuenow="{{ progress }}"
+                         aria-valuemin="0"
+                         aria-valuemax="100">
+                        {{ progress }}%
+                    </div>
+                </div>
+
+                {% if completed == 4 %}
+                <div class="alert alert-success">
+                    Congratulations! You have completed
+                    your newcomer journey!
+                </div>
+                {% endif %}
+
+                <div class="list-group">
+
+                    <!-- STEP 1 -->
+                    <div class="list-group-item p-3">
+                        <h5>
+                            {% if rules_done %}✅{% else %}⬜{% endif %}
+                            1. Learn the Community Rules
+                        </h5>
+
+                        <p>
+                            Understand how to participate
+                            respectfully in MiniSocial.
+                        </p>
+
+                        <a href="/rules"
+                           class="btn btn-outline-primary btn-sm">
+                            Read Rules
+                        </a>
+
+                        {% if not rules_done %}
+                        <form method="POST"
+                              action="{{ url_for('acknowledge_newcomer_rules') }}"
+                              class="mt-2">
+
+                            <button type="submit"
+                                    class="btn btn-primary btn-sm">
+                                I Have Read the Rules
+                            </button>
+                        </form>
+                        {% else %}
+                        <span class="badge bg-success">
+                            Completed
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- STEP 2 -->
+                    <div class="list-group-item p-3">
+                        <h5>
+                            {% if introduction_done %}✅{% else %}⬜{% endif %}
+                            2. Introduce Yourself
+                        </h5>
+
+                        <p>
+                            Tell the community about yourself
+                            and your interests.
+                        </p>
+
+                        {% if introduction_done %}
+                        <span class="badge bg-success">Completed</span>
+                        {% else %}
+                        <a href="{{ url_for('newcomers') }}"
+                           class="btn btn-primary btn-sm">
+                            Write Introduction
+                        </a>
+                        {% endif %}
+                    </div>
+
+                    <!-- STEP 3 -->
+                    <div class="list-group-item p-3">
+                        <h5>
+                            {% if following_done %}✅{% else %}⬜{% endif %}
+                            3. Follow Another Member
+                        </h5>
+
+                        <p>
+                            Find someone interesting and follow
+                            their posts.
+                        </p>
+
+                        {% if following_done %}
+                        <span class="badge bg-success">Completed</span>
+                        {% else %}
+                        <a href="/"
+                           class="btn btn-primary btn-sm">
+                            Discover Members
+                        </a>
+                        {% endif %}
+                    </div>
+
+                    <!-- STEP 4 -->
+                    <div class="list-group-item p-3">
+                        <h5>
+                            {% if discussion_done %}✅{% else %}⬜{% endif %}
+                            4. Join a Discussion
+                        </h5>
+
+                        <p>
+                            Comment on another member's post
+                            and join the conversation.
+                        </p>
+
+                        {% if discussion_done %}
+                        <span class="badge bg-success">Completed</span>
+                        {% else %}
+                        <a href="/?sort=needs_reply"
+                           class="btn btn-primary btn-sm">
+                            Find a Discussion
+                        </a>
+                        {% endif %}
+                    </div>
+
+                </div>
+            </div>
+        </body>
+        </html>
+        """,
+            completed=completed,
+            progress=progress,
+            rules_done=rules_done,
+            introduction_done=introduction_done,
+            following_done=following_done,
+            discussion_done=discussion_done,
+        )
+
+    # Mark the community rules as acknowledged.
+    @app.route("/onboarding/acknowledge", methods=["POST"])
+    def acknowledge_newcomer_rules():
+
+        user_id = session.get("user_id")
+
+        if not user_id:
+            abort(403)
+
+        db = get_db()
+
+        db.execute(
+            """
+            INSERT INTO newcomer_onboarding
+            (user_id, rules_acknowledged)
+            VALUES (?, 1)
+            ON CONFLICT(user_id)
+            DO UPDATE SET rules_acknowledged = 1
+            """,
+            (user_id,),
+        )
+
+        db.commit()
+
+        return redirect(url_for("newcomer_onboarding"))

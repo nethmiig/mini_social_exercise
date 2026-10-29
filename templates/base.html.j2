@@ -49,6 +49,27 @@
         <li class="nav-item">
           <a class="nav-link" href="/privacy">Privacy</a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/rules">Rules</a>
+        </li>
+
+        
+        <!-- Coding Assignment 3: Newcomer Introductions -->
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('newcomers') }}">
+                Newcomers
+            </a>
+        </li>
+
+        <!-- Coding Assignment 3: Onboarding Checklist -->
+        {% if session.get('user_id') %}
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('newcomer_onboarding') }}">
+                My Journey
+            </a>
+        </li>
+        {% endif %}
+
 
         <!-- Check if user is logged in -->
         {% if session.get('user_id') %}
